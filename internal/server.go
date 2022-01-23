@@ -91,29 +91,14 @@ func (s *Server) handleConnection(conn net.Conn) {
 		query = strings.Trim(query, " ")
 		query = strings.ReplaceAll(query, "\n", "")
 		tokens := strings.Split(query, " ")
-		querytype := tokens[0]
 		var res string
-		switch strings.ToUpper(querytype) {
-		case "SET":
-			if (len(tokens)) != 3 {
-				res = invalidquery
-			} else {
-
-				res = s.db.SetValue(tokens[1], tokens[2])
-			}
-		case "GET":
-			if len(tokens) != 2 {
-				res = invalidquery
-			} else {
-
-				res = s.db.GetValue(tokens[1])
-			}
-		case "DEL":
-			if len(tokens) != 2 {
-				res = invalidquery
-			} else {
-				res = s.db.DeleteValue(tokens[1])
-			}
+		switch {
+		case tokens[0] == "set" && len(tokens) == 3:
+			res = s.db.SetValue(tokens[1], tokens[2])
+		case tokens[0] == "get" && len(tokens) == 2:
+			res = s.db.GetValue(tokens[1])
+		case tokens[0] == "del" && len(tokens) == 2:
+			res = s.db.DeleteValue(tokens[1])
 		default:
 			res = invalidquery
 		}

@@ -6,11 +6,16 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 )
 
 type Server struct {
-	listner net.Listener
-	db      Database
+	listner           net.Listener
+	db                Database
+	connections       map[int]net.Conn
+	totalConnnections int
+	quit              chan int
+	exited            chan int
 }
 
 func NewServer() *Server {
@@ -20,8 +25,12 @@ func NewServer() *Server {
 	}
 
 	ser := &Server{
-		listner: ln,
-		db:      NewDatabase(),
+		listner:           ln,
+		db:                NewDatabase(),
+		connections:       make(map[int]net.Conn),
+		totalConnnections: 0,
+		quit:              make(chan int),
+		exited:            make(chan int),
 	}
 	go ser.Serve()
 	return ser
@@ -29,12 +38,42 @@ func NewServer() *Server {
 
 func (s *Server) Serve() {
 	for {
-		conn, err := s.listner.Accept()
-		if err != nil {
-			log.Fatal()
+		select {
+		case <-s.quit:
+			fmt.Println("Shutting down the server")
+			err := s.listner.Close()
+			if err != nil {
+				fmt.Println("Some issue in shutdown")
+			}
+
+			for _, conn := range s.connections {
+				s.write(conn, "server closing in 10sec")
+				<-time.After(10 * time.Second)
+				conn.Close()
+			}
+
+			close(s.exited)
+			fmt.Println("Handle server close here")
+		default:
+			fmt.Println("Accept new connect here")
+			listener, _ := s.listner.(*net.TCPListener)
+			listener.SetDeadline(time.Now().Add(2 * time.Second))
+			conn, err := listener.Accept()
+			if oppErr, ok := err.(*net.OpError); ok && oppErr.Timeout() {
+				continue
+			}
+
+			if err != nil {
+				log.Fatal()
+			}
+			s.connections[s.totalConnnections] = conn
+			s.totalConnnections += 1
+			fmt.Println("Connect to memoryDB", s.totalConnnections)
+			s.write(conn, "Welcome to memory DB")
+			go s.handleConnection(conn)
+
 		}
-		s.write(conn, "Welcome to memory DB")
-		go s.handleConnection(conn)
+
 	}
 }
 
@@ -83,5 +122,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 }
 
 func (s *Server) Stop() {
-	fmt.Println("Stop thes server")
+	fmt.Println("Closing db connection")
+	close(s.quit)
+	<-s.exited
+
 }
